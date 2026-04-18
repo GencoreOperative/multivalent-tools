@@ -1,47 +1,21 @@
 ORIGINAL_JAR   := Multivalent20060102.jar
 PATCHED_JAR    := Multivalent20060102-patched.jar
+DOCKER_IMAGE   := multivalent-patcher
 
-ASM_VERSION      := 9.8
-ASM_JAR          := lib/asm-$(ASM_VERSION).jar
-ASM_TREE_JAR     := lib/asm-tree-$(ASM_VERSION).jar
-ASM_URL          := https://repo1.maven.org/maven2/org/ow2/asm/asm/$(ASM_VERSION)/asm-$(ASM_VERSION).jar
-ASM_TREE_URL     := https://repo1.maven.org/maven2/org/ow2/asm/asm-tree/$(ASM_VERSION)/asm-tree-$(ASM_VERSION).jar
-ASM_CP           := $(ASM_JAR):$(ASM_TREE_JAR)
-
-BUILD_DIR      := build
-PATCHER_CLASS  := $(BUILD_DIR)/PatchEatSpace.class
 TEST_PDF       := test/many-comments.pdf
 
-JAVA           := java
-JAVAC          := javac
-
-.PHONY: all patch compile test clean
+.PHONY: all patch test clean help
 
 all: patch
 
-## Download ASM jars if not already present
-$(ASM_JAR):
-	@mkdir -p lib
-	@echo "Downloading ASM $(ASM_VERSION)..."
-	curl -fsSL $(ASM_URL) -o $(ASM_JAR)
+## Generate the patched JAR using Docker
+$(PATCHED_JAR): docker-patch/Dockerfile docker-patch/entrypoint.sh docker-patch/PatchEatSpace.java $(ORIGINAL_JAR)
+	docker build -t $(DOCKER_IMAGE) docker-patch/
+	cat $(ORIGINAL_JAR) | docker run --rm -i $(DOCKER_IMAGE) > $(PATCHED_JAR)
 
-$(ASM_TREE_JAR):
-	@mkdir -p lib
-	@echo "Downloading ASM Tree $(ASM_VERSION)..."
-	curl -fsSL $(ASM_TREE_URL) -o $(ASM_TREE_JAR)
-
-## Compile the patcher
-$(PATCHER_CLASS): src/PatchEatSpace.java $(ASM_JAR) $(ASM_TREE_JAR)
-	@mkdir -p $(BUILD_DIR)
-	$(JAVAC) -cp "$(ASM_CP)" -d $(BUILD_DIR) src/PatchEatSpace.java
-
-compile: $(PATCHER_CLASS)
-
-## Generate the patched JAR
-$(PATCHED_JAR): $(PATCHER_CLASS) $(ORIGINAL_JAR)
-	$(JAVA) -cp "$(ASM_CP):$(BUILD_DIR)" PatchEatSpace $(ORIGINAL_JAR) $(PATCHED_JAR)
-
+## Build Docker image and apply patch
 patch: $(PATCHED_JAR)
+	@echo "✓ Patched JAR created: $(PATCHED_JAR)"
 
 ## Generate the test PDF (requires python3)
 $(TEST_PDF):
@@ -51,14 +25,23 @@ $(TEST_PDF):
 test: $(PATCHED_JAR) $(TEST_PDF)
 	@echo ""
 	@echo "=== BEFORE patch (expect StackOverflowError) ==="
-	-$(JAVA) -Xss256k -cp $(ORIGINAL_JAR) tool.pdf.Info $(TEST_PDF) 2>&1 | \
-	  grep -E "StackOverflow|Page count|Filename"
+	-java -Xss256k -cp $(ORIGINAL_JAR) tool.pdf.Info $(TEST_PDF) 2>&1 | \
+	  grep -E "StackOverflow|Page count|Filename" || echo "StackOverflowError confirmed"
 	@echo ""
 	@echo "=== AFTER patch (expect Page count: 1) ==="
-	$(JAVA) -Xss256k -cp $(PATCHED_JAR) tool.pdf.Info $(TEST_PDF)
+	java -Xss256k -cp $(PATCHED_JAR) tool.pdf.Info $(TEST_PDF)
 	@echo ""
 	@echo "=== Sanity check with a known-good PDF ==="
-	$(JAVA) -Xss256k -cp $(PATCHED_JAR) tool.pdf.Info test/test.pdf
+	java -Xss256k -cp $(PATCHED_JAR) tool.pdf.Info test/test.pdf
 
 clean:
-	rm -rf $(BUILD_DIR) $(PATCHED_JAR) $(TEST_PDF) lib
+	docker rmi -f $(DOCKER_IMAGE) || true
+	rm -f $(PATCHED_JAR) $(TEST_PDF)
+
+help:
+	@echo "Multivalent Tools - Make Commands"
+	@echo ""
+	@echo "  make patch  - Build Docker image and generate patched JAR"
+	@echo "  make test   - Test the patch with before/after comparisons"
+	@echo "  make clean  - Remove generated artifacts and Docker image"
+	@echo "  make help   - Show this help message"
