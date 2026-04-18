@@ -5,9 +5,9 @@ WORKDIR /patch
 # Copy ASM dependencies
 COPY asm-9.8.jar asm-tree-9.8.jar ./
 
-# Copy and compile the patching Java file
-COPY PatchEatSpace.java ./
-RUN javac -cp asm-9.8.jar:asm-tree-9.8.jar PatchEatSpace.java
+# Copy and compile the patching Java files
+COPY PatchEatSpace.java PatchImpose.java ./
+RUN javac -cp asm-9.8.jar:asm-tree-9.8.jar PatchEatSpace.java PatchImpose.java
 
 # Create temporary directory and copy entrypoint script
 RUN mkdir -p /tmp/jars

@@ -7,23 +7,38 @@ show_help() {
 Multivalent JAR Patcher
 
 USAGE:
-    cat original.jar | docker run --rm -i multivalent-patcher > patched.jar
+    cat original.jar | docker run --rm -i multivalent-patcher [PATCH_NAME] > patched.jar
 
 DESCRIPTION:
-    This Docker container patches Multivalent20060102.jar to eliminate a
-    StackOverflowError caused by unbounded mutual recursion in PDFReader.eatSpace().
+    This Docker container applies bytecode patches to Multivalent20060102.jar
+    to fix various bugs found in the legacy tool. Multiple patches are available.
+
+PATCHES:
+    eatspace (default)
+        Fixes StackOverflowError caused by unbounded mutual recursion in 
+        PDFReader.eatSpace() when processing PDFs with many comment lines.
     
-    The patching process:
-    1. Reads the original JAR from standard input (STDIN)
-    2. Applies the PDFReader.eatSpace() patch using ASM
-    3. Outputs the patched JAR to standard output (STDOUT)
+    margin
+        Fixes NullPointerException in Units.getLength() when margin parameter
+        lacks explicit unit suffix. Enables proper margin support in Impose tool.
 
 FLAGS:
     --help     Display this help message and exit
 
-EXAMPLE:
-    docker build -t multivalent-patcher docker-patch/
-    cat Multivalent20060102.jar | docker run --rm -i multivalent-patcher > Multivalent20060102-patched.jar
+EXAMPLES:
+    Build the Docker image:
+        docker build -t multivalent-patcher docker-patch/
+    
+    Apply the default eatspace patch:
+        cat Multivalent20060102.jar | docker run --rm -i multivalent-patcher > patched.jar
+    
+    Apply the margin patch:
+        cat Multivalent20060102.jar | docker run --rm -i multivalent-patcher margin > patched.jar
+    
+    Apply both patches (eatspace first, then margin):
+        cat Multivalent20060102.jar | \
+          docker run --rm -i multivalent-patcher eatspace | \
+          docker run --rm -i multivalent-patcher margin > fully-patched.jar
 
 ENVIRONMENT:
     The container requires no environment variables.
@@ -37,14 +52,39 @@ if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
     exit 0
 fi
 
+# Determine which patch to apply (default: eatspace)
+PATCH_NAME="${1:-eatspace}"
+
+# Validate patch name
+case "$PATCH_NAME" in
+    eatspace|margin)
+        # Valid patch name
+        ;;
+    *)
+        echo "Error: Unknown patch '$PATCH_NAME'" >&2
+        echo "Valid patches: eatspace, margin" >&2
+        exit 1
+        ;;
+esac
+
+# Convert patch name to class name
+case "$PATCH_NAME" in
+    eatspace)
+        PATCH_CLASS="EatSpace"
+        ;;
+    margin)
+        PATCH_CLASS="Impose"
+        ;;
+esac
+
 # Write the input JAR from STDIN to a temporary file
 INPUT_JAR="/tmp/jars/input.jar"
 OUTPUT_JAR="/tmp/jars/output.jar"
 
 cat > "$INPUT_JAR"
 
-# Run the patch
-java -cp /patch/asm-9.8.jar:/patch/asm-tree-9.8.jar:/patch PatchEatSpace "$INPUT_JAR" "$OUTPUT_JAR"
+# Run the selected patch
+java -cp /patch/asm-9.8.jar:/patch/asm-tree-9.8.jar:/patch "Patch$PATCH_CLASS" "$INPUT_JAR" "$OUTPUT_JAR"
 
 # Output the patched JAR to STDOUT
 cat "$OUTPUT_JAR"
