@@ -14,7 +14,7 @@ The original Multivalent website and documentation can be viewed through the [In
 
 ### Why This Matters
 
-The original Multivalent project is no longer under active development, and the JAR files and documentation have been removed or obfuscated from the SourceForge project. This repository preserves `Multivalent20060102.jar` along with a critical bug fix that makes it usable in modern containerized environments.
+The original Multivalent project is no longer under active development, and the JAR files and documentation have been removed or obfuscated from the SourceForge project. This repository preserves `Multivalent20060102.jar` along with a critical bug fix that resolves an issue found when working with PDF files that contain comments.
 
 
 ## The Bug: StackOverflowError with PDFs Containing Comment Lines
